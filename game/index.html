@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solmar Bay — Open-World Crime</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<canvas id="game" aria-label="Solmar Bay: an open-world crime game. Drive, steal cars, outrun the police and run five story missions across a sun-soaked coastal city."></canvas>
+
+<div id="hud" class="hidden">
+  <div id="hud-top-left">
+    <div id="hud-stars">☆☆☆☆☆</div>
+    <div id="hud-cash">$0</div>
+  </div>
+  <div id="hud-top-center">
+    <div id="hud-objective"></div>
+    <div id="hud-meta"><span id="hud-clock">17:30</span> · <span id="hud-street"></span></div>
+  </div>
+  <button id="btn-mute" type="button">🔊 Sound on</button>
+  <div id="hud-minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas></div>
+  <div id="hud-phone">
+    <div id="hud-phone-from"></div>
+    <div id="hud-phone-text"></div>
+  </div>
+  <div id="hud-prompt"></div>
+  <div id="hud-bottom-right">
+    <div id="hud-health"><div id="hud-health-fill"></div><span id="hud-health-text">100</span></div>
+    <div id="hud-speed"></div>
+    <div id="hud-stats-line"></div>
+  </div>
+  <div id="hud-banner"></div>
+  <div id="hud-vignette"></div>
+  <div id="hud-wanted-flash"></div>
+</div>
+
+<div id="screen-title" class="screen">
+  <div class="title-inner">
+    <div class="title-kicker">An open-world crime story</div>
+    <h1 class="title-logo">SOLMAR<span>BAY</span></h1>
+    <p class="title-tag">Drive. Steal. Fight. Escape. Five story missions, a five-star wanted
+      system, living traffic and pedestrians — one sun-soaked city, all yours.</p>
+    <div class="title-buttons">
+      <button id="btn-start" type="button" class="btn-primary">Start new game</button>
+      <button id="btn-continue" type="button" class="btn-secondary hidden">Continue</button>
+      <button id="btn-help" type="button" class="btn-secondary">How to play</button>
+    </div>
+    <p class="title-controls">WASD move / drive · Mouse aim · Click shoot · E enter car · Space handbrake · Shift sprint · P pause · M mute</p>
+    <p class="title-credit">An original game: its city, characters, story and art are all its own.</p>
+  </div>
+</div>
+
+<div id="screen-pause" class="screen">
+  <div class="panel">
+    <h2>Paused</h2>
+    <p class="panel-sub">Solmar Bay waits for no one. Except now.</p>
+    <button id="btn-resume" type="button" class="btn-primary">Resume</button>
+    <button id="btn-save" type="button" class="btn-secondary">Save game</button>
+    <button id="btn-retry-mission" type="button" class="btn-secondary">Restart mission</button>
+    <button id="btn-quit" type="button" class="btn-secondary">Quit to title</button>
+  </div>
+</div>
+
+<div id="screen-over" class="screen">
+  <div class="panel">
+    <h2 id="over-title">WASTED</h2>
+    <p id="over-sub" class="panel-sub"></p>
+    <p id="over-stats" class="panel-stats"></p>
+    <button id="btn-retry" type="button" class="btn-primary">Back on the street</button>
+    <p class="panel-hint">Press Enter to retry</p>
+  </div>
+</div>
+
+<div id="screen-help" class="screen">
+  <div class="panel help-panel">
+    <h2>How to play</h2>
+    <table class="controls-table">
+      <tr><td>W A S D / arrows</td><td>Move on foot · drive (W accelerate, S brake/reverse)</td></tr>
+      <tr><td>Mouse</td><td>Aim on foot · click (hold) to shoot</td></tr>
+      <tr><td>E</td><td>Enter / exit a car · respray at Pay 'n Spray · save at the Safehouse</td></tr>
+      <tr><td>Space</td><td>Handbrake — drift around corners</td></tr>
+      <tr><td>Shift</td><td>Sprint on foot</td></tr>
+      <tr><td>P / Esc</td><td>Pause</td></tr>
+      <tr><td>M</td><td>Mute sound</td></tr>
+    </table>
+    <p class="panel-sub">Follow the pink waypoint to your objective. Stars mean the law is after
+      you — break line of sight to cool down, or pay $100 at the Pay 'n Spray.
+      Taxi drivers earn fares; ten hidden packages are scattered across the city.</p>
+    <button id="btn-help-close" type="button" class="btn-primary">Got it</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
