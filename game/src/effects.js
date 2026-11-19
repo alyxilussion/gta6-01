@@ -1,109 +1,102 @@
-// Particles, skid marks, muzzle flashes and explosions — the juice that
-// makes a crash feel like a crash. All state lives in arrays on the game
-// state object; the renderer draws them, this module spawns and steps them.
-export function initEffects(state) {
-  state.particles = [];
-  state.skids = [];
-  state.flashes = [];
-  state.shake = 0;
-}
+// Particles, muzzle flash, screen shake, floating score popups.
+// One THREE.Points cloud for smoke/sparks; popups are DOM elements.
 
-export function addShake(state, amount) {
-  state.shake = Math.min(18, state.shake + amount);
-}
+import * as THREE from 'three';
 
-export function spawnSparks(state, x, y, color, count, speed) {
-  for (let i = 0; i < count; i += 1) {
-    const a = Math.random() * Math.PI * 2;
-    const v = speed * (0.4 + Math.random() * 0.8);
-    state.particles.push({
-      x, y,
-      vx: Math.cos(a) * v,
-      vy: Math.sin(a) * v,
-      life: 0.35 + Math.random() * 0.4,
-      maxLife: 0.75,
-      size: 2 + Math.random() * 2.5,
-      color,
-      drag: 3,
-      gravity: 0,
-    });
+const MAX_PARTICLES = 400;
+
+export function createEffects(scene) {
+  const positions = new Float32Array(MAX_PARTICLES * 3);
+  const colors = new Float32Array(MAX_PARTICLES * 3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({ size: 1.6, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  scene.add(points);
+
+  const parts = [];
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    parts.push({ alive: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, r: 1, g: 1, b: 1 });
+    positions[i * 3 + 1] = -1000;
   }
-}
+  let cursor = 0;
+  let shake = 0;
+  const popupRoot = document.getElementById('popups');
 
-export function spawnSmoke(state, x, y, count) {
-  for (let i = 0; i < count; i += 1) {
-    state.particles.push({
-      x: x + (Math.random() - 0.5) * 14,
-      y: y + (Math.random() - 0.5) * 14,
-      vx: (Math.random() - 0.5) * 24,
-      vy: -20 - Math.random() * 30,
-      life: 0.8 + Math.random() * 0.8,
-      maxLife: 1.6,
-      size: 6 + Math.random() * 8,
-      color: 'rgba(60,60,66,0.55)',
-      drag: 0.6,
-      gravity: 0,
-    });
+  function spawn(x, y, z, vx, vy, vz, life, r, g, b) {
+    const p = parts[cursor];
+    cursor = (cursor + 1) % MAX_PARTICLES;
+    p.alive = true; p.x = x; p.y = y; p.z = z;
+    p.vx = vx; p.vy = vy; p.vz = vz;
+    p.life = life; p.maxLife = life; p.r = r; p.g = g; p.b = b;
   }
-}
 
-export function spawnExplosion(state, x, y) {
-  addShake(state, 12);
-  for (let i = 0; i < 26; i += 1) {
-    const a = Math.random() * Math.PI * 2;
-    const v = 60 + Math.random() * 260;
-    state.particles.push({
-      x, y,
-      vx: Math.cos(a) * v,
-      vy: Math.sin(a) * v,
-      life: 0.4 + Math.random() * 0.5,
-      maxLife: 0.9,
-      size: 3 + Math.random() * 6,
-      color: ['#FFC53D', '#FF6B4A', '#FF2E2E'][i % 3],
-      drag: 2.2,
-      gravity: 0,
-    });
-  }
-  spawnSmoke(state, x, y, 10);
-  state.flashes.push({ x, y, radius: 90, life: 0.18, maxLife: 0.18, color: 'rgba(255,197,61,0.85)' });
-}
-
-export function spawnMuzzle(state, x, y, angle) {
-  state.flashes.push({ x, y, angle, radius: 16, life: 0.05, maxLife: 0.05, color: 'rgba(255,220,120,0.9)' });
-}
-
-export function spawnBlood(state, x, y) {
-  spawnSparks(state, x, y, '#C93A3A', 8, 130);
-}
-
-export function addSkid(state, x, y, angle) {
-  const last = state.skids[state.skids.length - 1];
-  if (last && Math.hypot(last.x - x, last.y - y) < 6) return;
-  state.skids.push({ x, y, angle, life: 6 });
-  if (state.skids.length > 400) state.skids.splice(0, state.skids.length - 400);
-}
-
-export function stepEffects(state, dt) {
-  for (let i = state.particles.length - 1; i >= 0; i -= 1) {
-    const p = state.particles[i];
-    p.life -= dt;
-    if (p.life <= 0) {
-      state.particles.splice(i, 1);
-      continue;
-    }
-    const drag = Math.max(0, 1 - p.drag * dt);
-    p.vx *= drag;
-    p.vy *= drag;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-  }
-  for (let i = state.skids.length - 1; i >= 0; i -= 1) {
-    state.skids[i].life -= dt;
-    if (state.skids[i].life <= 0) state.skids.splice(i, 1);
-  }
-  for (let i = state.flashes.length - 1; i >= 0; i -= 1) {
-    state.flashes[i].life -= dt;
-    if (state.flashes[i].life <= 0) state.flashes.splice(i, 1);
-  }
-  state.shake = Math.max(0, state.shake - 30 * dt);
+  return {
+    smoke(x, y, z, n = 6) {
+      for (let i = 0; i < n; i++) {
+        spawn(x + (Math.random() - 0.5), y + Math.random() * 0.5, z + (Math.random() - 0.5),
+          (Math.random() - 0.5) * 2, 1.5 + Math.random() * 2, (Math.random() - 0.5) * 2,
+          0.8 + Math.random() * 0.8, 0.35, 0.33, 0.32);
+      }
+    },
+    sparks(x, y, z, n = 10) {
+      for (let i = 0; i < n; i++) {
+        spawn(x, y, z, (Math.random() - 0.5) * 12, Math.random() * 8, (Math.random() - 0.5) * 12,
+          0.3 + Math.random() * 0.4, 1.0, 0.8, 0.25);
+      }
+    },
+    explosion(x, y, z) {
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 4 + Math.random() * 14;
+        spawn(x, y + 1, z, Math.cos(a) * s, 3 + Math.random() * 10, Math.sin(a) * s,
+          0.6 + Math.random() * 0.9, 1.0, 0.45 + Math.random() * 0.3, 0.1);
+      }
+      for (let i = 0; i < 20; i++) {
+        spawn(x + (Math.random() - 0.5) * 3, y + 1 + Math.random() * 2, z + (Math.random() - 0.5) * 3,
+          (Math.random() - 0.5) * 3, 2 + Math.random() * 4, (Math.random() - 0.5) * 3,
+          1.2 + Math.random(), 0.25, 0.24, 0.23);
+      }
+      shake = Math.min(1, shake + 0.8);
+    },
+    muzzle(x, y, z) {
+      for (let i = 0; i < 5; i++) {
+        spawn(x, y, z, (Math.random() - 0.5) * 4, Math.random() * 2, (Math.random() - 0.5) * 4,
+          0.08 + Math.random() * 0.06, 1.0, 0.9, 0.4);
+      }
+    },
+    addShake(amount) { shake = Math.min(1, shake + amount); },
+    popup(text, kind = '') {
+      if (!popupRoot) return;
+      const el = document.createElement('div');
+      el.className = 'popup ' + kind;
+      el.textContent = text;
+      popupRoot.appendChild(el);
+      setTimeout(() => el.remove(), 1800);
+    },
+    update(dt) {
+      shake = Math.max(0, shake - dt * 2.2);
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        const p = parts[i];
+        if (!p.alive) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.alive = false; positions[i * 3 + 1] = -1000; continue; }
+        p.vy -= 2.5 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        if (p.y < 0.1) { p.y = 0.1; p.vy = 0; }
+        const f = p.life / p.maxLife;
+        positions[i * 3] = p.x; positions[i * 3 + 1] = p.y; positions[i * 3 + 2] = p.z;
+        colors[i * 3] = p.r * f; colors[i * 3 + 1] = p.g * f; colors[i * 3 + 2] = p.b * f;
+      }
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.color.needsUpdate = true;
+    },
+    shakeOffset() {
+      if (shake <= 0.01) return { x: 0, y: 0 };
+      const s = shake * shake * 0.9;
+      return { x: (Math.random() - 0.5) * s, y: (Math.random() - 0.5) * s };
+    },
+  };
 }

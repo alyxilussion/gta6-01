@@ -1,96 +1,63 @@
-// Keyboard and mouse state. The game reads `keys` and `mouse` each step;
-// UI screens read the one-shot `pressed` set, cleared at each frame's end.
-export const keys = {};
-export const pressed = new Set();
-export const mouse = { x: 0, y: 0, down: false, clicked: false };
+// Keyboard + mouse state. One-shot presses are snapshotted at the START of
+// each frame and cleared at the END, so a press is never swallowed by a
+// frame-end clear (a bug the 2D build's playtest caught).
 
-// One-shot presses are snapshotted at the start of each frame: the snapshot
-// is what the frame reads, and fresh keydowns during the frame land in the
-// next frame's snapshot. Clearing the live set at the frame's end instead
-// would swallow any press that arrived after the frame's input reads.
-let pressedSnapshot = new Set();
+export function createInput(canvas) {
+  const keys = new Set();
+  const pressed = new Set(); // keys pressed since last frame start
+  const released = new Set();
+  let mouseDown = false;
+  let mousePressed = false;
+  let mouseX = 0;
+  let mouseY = 0;
+  let lookDX = 0; // accumulated mouse movement for camera orbit
 
-export function beginFrameInput() {
-  pressedSnapshot = new Set(pressed);
-  pressed.clear();
-}
-
-export function endFrameInput() {
-  mouse.clicked = false;
-}
-
-export function wasPressed(name) {
-  return pressedSnapshot.has(name);
-}
-
-// Like wasPressed, but consumes the press: with a fixed-step accumulator
-// running several steps per frame, an unconsumed 'enter' would exit a car
-// and re-enter it in the same frame.
-export function consumePressed(name) {
-  if (!pressedSnapshot.has(name)) return false;
-  pressedSnapshot.delete(name);
-  return true;
-}
-
-const KEY_NAMES = {
-  KeyW: 'up', ArrowUp: 'up',
-  KeyS: 'down', ArrowDown: 'down',
-  KeyA: 'left', ArrowLeft: 'left',
-  KeyD: 'right', ArrowRight: 'right',
-  ShiftLeft: 'sprint', ShiftRight: 'sprint',
-  Space: 'handbrake',
-  KeyE: 'enter',
-  KeyM: 'mute',
-  KeyP: 'pause',
-  Escape: 'pause',
-  Enter: 'confirm',
-  KeyR: 'restart',
-  KeyH: 'help',
-};
-
-export function initInput(canvas) {
-  window.addEventListener('keydown', (event) => {
-    const name = KEY_NAMES[event.code];
-    if (name) {
-      if (!keys[name]) pressed.add(name);
-      keys[name] = true;
-      if (name === 'handbrake' || name === 'up' || name === 'down') event.preventDefault();
-    }
-  });
-  window.addEventListener('keyup', (event) => {
-    const name = KEY_NAMES[event.code];
-    if (name) keys[name] = false;
-  });
-  window.addEventListener('blur', () => {
-    for (const k of Object.keys(keys)) keys[k] = false;
-  });
-  canvas.addEventListener('mousemove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = event.clientX - rect.left;
-    mouse.y = event.clientY - rect.top;
-  });
-  canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0) {
-      mouse.down = true;
-      mouse.clicked = true;
-    }
-  });
-  window.addEventListener('mouseup', (event) => {
-    if (event.button === 0) mouse.down = false;
-  });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-}
-
-export function moveVector() {
-  let x = 0;
-  let y = 0;
-  if (keys.left) x -= 1;
-  if (keys.right) x += 1;
-  if (keys.up) y -= 1;
-  if (keys.down) y += 1;
-  if (x !== 0 && y !== 0) {
-    x *= Math.SQRT1_2;
-    y *= Math.SQRT1_2;
+  function keyOf(e) {
+    if (e.code.startsWith('Key')) return e.code.slice(3).toLowerCase();
+    if (e.code.startsWith('Digit')) return e.code.slice(5);
+    return e.code; // Space, ShiftLeft, Escape, Enter, Tab, ArrowUp...
   }
-  return { x, y };
+
+  window.addEventListener('keydown', (e) => {
+    const k = keyOf(e);
+    if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+    if (!keys.has(k)) pressed.add(k);
+    keys.add(k);
+  });
+  window.addEventListener('keyup', (e) => {
+    const k = keyOf(e);
+    keys.delete(k);
+    released.add(k);
+  });
+  window.addEventListener('blur', () => { keys.clear(); });
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { mouseDown = true; mousePressed = true; }
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) mouseDown = false;
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX; mouseY = e.clientY;
+    lookDX += e.movementX || 0;
+  });
+
+  return {
+    down(k) { return keys.has(k); },
+    wasPressed(k) { return pressed.has(k); },
+    wasReleased(k) { return released.has(k); },
+    get mouseDown() { return mouseDown; },
+    get mousePressed() { return mousePressed; },
+    get mouseX() { return mouseX; },
+    get mouseY() { return mouseY; },
+    consumeLook() { const d = lookDX; lookDX = 0; return d; },
+    // Axis helpers: forward is W/S, strafe is A/D.
+    axisY() { return (this.down('w') ? 1 : 0) - (this.down('s') ? 1 : 0); },
+    axisX() { return (this.down('d') ? 1 : 0) - (this.down('a') ? 1 : 0); },
+    sprint() { return this.down('ShiftLeft') || this.down('ShiftRight'); },
+    endFrame() {
+      pressed.clear();
+      released.clear();
+      mousePressed = false;
+    },
+  };
 }

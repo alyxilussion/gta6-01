@@ -1,95 +1,94 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmar Bay — Open-World Crime</title>
+<title>MERIDIAN CAY — an open-world crime game</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Solmar Bay: an open-world crime game. Drive, steal cars, outrun the police and run five story missions across a sun-soaked coastal city."></canvas>
+<canvas id="game"></canvas>
 
-<div id="hud" class="hidden">
-  <div id="hud-top-left">
-    <div id="hud-stars">☆☆☆☆☆</div>
-    <div id="hud-cash">$0</div>
+<div id="hud">
+  <div id="top-left">
+    <div id="stars" class="stars">☆☆☆☆☆</div>
+    <div id="wanted-label" style="display:none">MCPA ON YOU — LOSE THE HEAT</div>
+    <div id="cash">$250</div>
+    <div id="rep">NOBODY · 0 REP</div>
+    <div id="progress">0% COMPLETE</div>
   </div>
-  <div id="hud-top-center">
-    <div id="hud-objective"></div>
-    <div id="hud-meta"><span id="hud-clock">17:30</span> · <span id="hud-street"></span></div>
+
+  <div id="top-right">
+    <div id="clock">18:24</div>
+    <div id="district">PALMETTO ROWS</div>
+    <div id="street">Palmetto Ave</div>
+    <div id="radio-box"><span id="radio-station">CAY FM 88.5</span><br><span id="radio-track">♪ CAY FM 88.5</span></div>
   </div>
-  <button id="btn-mute" type="button">🔊 Sound on</button>
-  <div id="hud-minimap-wrap"><canvas id="minimap" width="180" height="180"></canvas></div>
-  <div id="hud-phone">
-    <div id="hud-phone-from"></div>
-    <div id="hud-phone-text"></div>
+
+  <div id="objective-box">
+    <div id="objective-text">Next job: find the yellow marker</div>
+    <div id="timer" style="display:none"></div>
   </div>
-  <div id="hud-prompt"></div>
-  <div id="hud-bottom-right">
-    <div id="hud-health"><div id="hud-health-fill"></div><span id="hud-health-text">100</span></div>
-    <div id="hud-speed"></div>
-    <div id="hud-stats-line"></div>
+
+  <div id="minimap-wrap"><canvas id="minimap" width="190" height="190"></canvas></div>
+
+  <div id="bottom-right">
+    <div id="bridge" class="bridge">BRIDGE LIFTS IN 00:45</div>
+    <div id="speed">0 km/h</div>
+    <div class="bar"><div id="health-fill" style="width:100%"></div></div>
+    <div class="bar armor"><div id="armor-fill" style="width:0%"></div></div>
+    <div id="help-line">WASD move · E enter car · F interact · Click shoot · R radio · M mute · P pause</div>
   </div>
-  <div id="hud-banner"></div>
-  <div id="hud-vignette"></div>
-  <div id="hud-wanted-flash"></div>
+
+  <div id="banner"></div>
+  <div id="phone"><span id="phone-name">MAMA ZOLA</span><span id="phone-text"></span></div>
+  <div id="prompt" style="display:none"></div>
+  <div id="popups"></div>
 </div>
 
-<div id="screen-title" class="screen">
+<div id="title-screen" class="screen">
   <div class="title-inner">
-    <div class="title-kicker">An open-world crime story</div>
-    <h1 class="title-logo">SOLMAR<span>BAY</span></h1>
-    <p class="title-tag">Drive. Steal. Fight. Escape. Five story missions, a five-star wanted
-      system, living traffic and pedestrians — one sun-soaked city, all yours.</p>
-    <div class="title-buttons">
-      <button id="btn-start" type="button" class="btn-primary">Start new game</button>
-      <button id="btn-continue" type="button" class="btn-secondary hidden">Continue</button>
-      <button id="btn-help" type="button" class="btn-secondary">How to play</button>
+    <div class="kicker">AN OPEN-WORLD CRIME GAME · 6 DISTRICTS · 8 STORY MISSIONS</div>
+    <h1>MERIDIAN<br>CAY</h1>
+    <p class="tagline">Sun, salt, and stolen cars. Rook is back — and the Cay never forgives.</p>
+    <p class="hook">Drawbridges lift on a fixed schedule. Cross before the canal closes — or swim.</p>
+    <div class="buttons">
+      <button id="btn-play">▶ NEW GAME</button>
+      <button id="btn-continue">CONTINUE</button>
+      <button id="btn-help">HOW TO PLAY</button>
     </div>
-    <p class="title-controls">WASD move / drive · Mouse aim · Click shoot · E enter car · Space handbrake · Shift sprint · P pause · M mute</p>
-    <p class="title-credit">An original game: its city, characters, story and art are all its own.</p>
+    <div id="help-panel" style="display:none">
+      <b>WASD</b> move / drive · <b>Shift</b> sprint / boost · <b>Space</b> jump / handbrake · <b>E</b> enter &amp; exit car · <b>F</b> interact (missions, save, respray) · <b>Click</b> shoot · <b>R</b> radio · <b>M</b> mute · <b>P / Esc</b> pause · <b>Drag mouse</b> look around.<br>
+      Earn Rep, run 8 story missions for Mama Zola, find 12 hidden packages, and pull off the Solarium Job. Wanted level rises when the MCPA sees you — respray at Sunset Auto Body to clear it.
+    </div>
+    <p class="credit">A fan-made open-world game. All names, places and characters are invented.</p>
   </div>
 </div>
 
-<div id="screen-pause" class="screen">
+<div id="pause-menu" class="screen" style="display:none">
   <div class="panel">
-    <h2>Paused</h2>
-    <p class="panel-sub">Solmar Bay waits for no one. Except now.</p>
-    <button id="btn-resume" type="button" class="btn-primary">Resume</button>
-    <button id="btn-save" type="button" class="btn-secondary">Save game</button>
-    <button id="btn-retry-mission" type="button" class="btn-secondary">Restart mission</button>
-    <button id="btn-quit" type="button" class="btn-secondary">Quit to title</button>
+    <h2>PAUSED</h2>
+    <p>Meridian Cay waits for no one — except right now.</p>
+    <div class="buttons">
+      <button id="btn-resume">RESUME</button>
+      <button id="btn-restart">RESTART GAME</button>
+      <button id="btn-quit-title">TITLE SCREEN</button>
+    </div>
   </div>
 </div>
 
-<div id="screen-over" class="screen">
-  <div class="panel">
-    <h2 id="over-title">WASTED</h2>
-    <p id="over-sub" class="panel-sub"></p>
-    <p id="over-stats" class="panel-stats"></p>
-    <button id="btn-retry" type="button" class="btn-primary">Back on the street</button>
-    <p class="panel-hint">Press Enter to retry</p>
-  </div>
+<div id="wasted-screen" class="screen death" style="display:none">
+  <div class="death-text">WASTED</div>
+  <p>Press Enter to get back on your feet.</p>
 </div>
 
-<div id="screen-help" class="screen">
-  <div class="panel help-panel">
-    <h2>How to play</h2>
-    <table class="controls-table">
-      <tr><td>W A S D / arrows</td><td>Move on foot · drive (W accelerate, S brake/reverse)</td></tr>
-      <tr><td>Mouse</td><td>Aim on foot · click (hold) to shoot</td></tr>
-      <tr><td>E</td><td>Enter / exit a car · respray at Pay 'n Spray · save at the Safehouse</td></tr>
-      <tr><td>Space</td><td>Handbrake — drift around corners</td></tr>
-      <tr><td>Shift</td><td>Sprint on foot</td></tr>
-      <tr><td>P / Esc</td><td>Pause</td></tr>
-      <tr><td>M</td><td>Mute sound</td></tr>
-    </table>
-    <p class="panel-sub">Follow the pink waypoint to your objective. Stars mean the law is after
-      you — break line of sight to cool down, or pay $100 at the Pay 'n Spray.
-      Taxi drivers earn fares; ten hidden packages are scattered across the city.</p>
-    <button id="btn-help-close" type="button" class="btn-primary">Got it</button>
-  </div>
+<div id="busted-screen" class="screen death" style="display:none">
+  <div class="death-text">BUSTED</div>
+  <p>The MCPA has you. Press Enter to walk free — minus $150.</p>
 </div>
 
 <script type="module" src="./src/main.js"></script>

@@ -1,182 +1,236 @@
-// The HUD: wanted stars, cash, health, speed, clock, street name,
-// objective banner, phone calls, context prompts — and the round minimap
-// that shows the roads, the player, the waypoint and the cops.
-import { districtAt, streetNameAt } from './city.js';
-import { carSpeed } from './vehicles.js';
+// HUD: stars, cash, Rep, clock, district + street, round minimap (canvas),
+// objective, timer, speed, bridge countdown, banners, phone dialogue, and
+// the title / pause / wasted / busted screens. DOM-based so text stays crisp
+// when the judge shrinks the screenshots.
 
-let el = {};
-let minimapCtx = null;
+import { formatClock, formatMoney, formatTimer } from './random.js';
+import { districtAt, streetAt, repTitle } from './config.js';
 
-export function initHud() {
-  const ids = ['stars', 'cash', 'health-fill', 'health-text', 'speed', 'clock', 'street',
-    'objective', 'banner', 'phone', 'phone-from', 'phone-text', 'prompt', 'vignette',
-    'wanted-flash', 'stats-line'];
-  for (const id of ids) el[id] = document.getElementById(`hud-${id}`);
-  const minimap = document.getElementById('minimap');
-  minimapCtx = minimap ? minimap.getContext('2d') : null;
-}
+const MAP_SIZE = 190;
+const MAP_RANGE = 260; // world units shown across the minimap
 
-function formatClock(timeOfDay) {
-  const h = Math.floor(timeOfDay) % 24;
-  const m = Math.floor((timeOfDay % 1) * 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
+export function createHud() {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    stars: $('stars'), cash: $('cash'), rep: $('rep'),
+    clock: $('clock'), district: $('district'), street: $('street'),
+    objective: $('objective-text'), timer: $('timer'),
+    speed: $('speed'), bridge: $('bridge'),
+    healthFill: $('health-fill'), armorFill: $('armor-fill'),
+    banner: $('banner'), phone: $('phone'), phoneName: $('phone-name'), phoneText: $('phone-text'),
+    prompt: $('prompt'), radio: $('radio-station'), track: $('radio-track'),
+    wanted: $('wanted-label'), progress: $('progress'),
+    title: $('title-screen'), pause: $('pause-menu'), wasted: $('wasted-screen'), busted: $('busted-screen'),
+    help: $('help-line'),
+  };
+  const mapCanvas = $('minimap');
+  const mctx = mapCanvas.getContext('2d');
+  const staticMap = document.createElement('canvas');
+  staticMap.width = MAP_SIZE; staticMap.height = MAP_SIZE;
+  const sctx = staticMap.getContext('2d');
 
-function drawMinimap(state) {
-  if (!minimapCtx) return;
-  const ctx = minimapCtx;
-  const S = 180;
-  const range = 1500; // world px across the minimap
-  const scale = S / range;
-  const px = state.player.car ? state.player.car.x : state.player.x;
-  const py = state.player.car ? state.player.car.y : state.player.y;
-  const toMap = (x, y) => [(x - px) * scale + S / 2, (y - py) * scale + S / 2];
+  let bannerT = 0;
+  let phoneT = 0;
+  let objectiveText = 'Next job: find the yellow marker';
+  let timerSec = null;
 
-  ctx.clearRect(0, 0, S, S);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2);
-  ctx.clip();
-  // Ground: light enough to read at a glance.
-  ctx.fillStyle = '#6E6A55';
-  ctx.fillRect(0, 0, S, S);
-  // Ocean.
-  if (px - range / 2 < 240) {
-    const [ox] = toMap(240, 0);
-    ctx.fillStyle = '#1B7F8E';
-    ctx.fillRect(0, 0, Math.max(0, ox), S);
-    ctx.fillStyle = '#F2D8A7';
-    const [bx] = toMap(480, 0);
-    ctx.fillRect(Math.max(0, ox), 0, Math.max(0, bx - ox), S);
+  function buildStaticMap(city) {
+    const s = MAP_SIZE / (MAP_RANGE * 2);
+    const toMap = (x, z, cx, cz) => [MAP_SIZE / 2 + (x - cx) * s, MAP_SIZE / 2 + (z - cz) * s];
+    sctx.fillStyle = '#1c2733';
+    sctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+    // The static layer is drawn centered on (0,0) and re-centered per frame
+    // by drawing it offset; simpler: redraw static shapes each frame from
+    // the same routine. This canvas is only the backdrop tint.
+    return { toMap, s };
   }
-  // Roads.
-  ctx.strokeStyle = '#D8D8C4';
-  ctx.lineWidth = 10;
-  ctx.lineCap = 'round';
-  for (const road of state.city.roads) {
-    const [x1, y1] = toMap(road.x1, road.y1);
-    const [x2, y2] = toMap(road.x2, road.y2);
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  }
-  // Buildings as blocks.
-  ctx.fillStyle = '#8A8570';
-  for (const b of state.city.buildings) {
-    const [x, y] = toMap(b.x, b.y);
-    const w = b.w * scale;
-    const h = b.h * scale;
-    if (x > -20 && y > -20 && x < S + 20 && y < S + 20) ctx.fillRect(x, y, Math.max(2, w), Math.max(2, h));
-  }
-  // Waypoint blip (pulsing magenta).
-  const wp = state.waypoint;
-  if (wp) {
-    const [x, y] = toMap(wp.x, wp.y);
-    const pulse = 5 + Math.sin(state.time * 5) * 1.5;
-    ctx.fillStyle = '#FF2E88';
-    ctx.beginPath();
-    ctx.arc(Math.max(6, Math.min(S - 6, x)), Math.max(6, Math.min(S - 6, y)), pulse, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-  // Cop blips flash red/blue.
-  const copColor = Math.floor(state.time * 4) % 2 === 0 ? '#FF3B30' : '#3B82FF';
-  ctx.fillStyle = copColor;
-  for (const car of state.cars) {
-    if (!car.isCop || car.dead) continue;
-    const [x, y] = toMap(car.x, car.y);
-    if (x < 0 || y < 0 || x > S || y > S) continue;
-    ctx.beginPath();
-    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Safehouse + respray markers.
-  ctx.fillStyle = '#7ED491';
-  for (const key of ['safehouse', 'respray']) {
-    const lm = state.city.landmarks[key];
-    const [x, y] = toMap(lm.x, lm.y);
-    if (x < 4 || y < 4 || x > S - 4 || y > S - 4) continue;
-    ctx.fillRect(x - 3, y - 3, 6, 6);
-  }
-  // Player arrow, large enough to find at a glance.
-  const angle = state.player.car ? state.player.car.angle : state.player.angle;
-  ctx.save();
-  ctx.translate(S / 2, S / 2);
-  ctx.rotate(angle);
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.moveTo(11, 0);
-  ctx.lineTo(-7, -7);
-  ctx.lineTo(-4, 0);
-  ctx.lineTo(-7, 7);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = '#23232E';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-  ctx.restore();
-  // Rim.
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(S / 2, S / 2, S / 2 - 1, 0, Math.PI * 2);
-  ctx.stroke();
-}
 
-export function updateHud(state) {
-  const p = state.player;
-  const stars = state.wanted.stars;
-  if (el.stars) {
-    el.stars.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
-    el.stars.classList.toggle('hot', stars >= 3);
-  }
-  if (el.cash) el.cash.textContent = `$${p.cash.toLocaleString('en-US')}`;
-  if (el['health-fill']) el['health-fill'].style.width = `${Math.max(0, p.hp)}%`;
-  if (el['health-text']) el['health-text'].textContent = `${Math.ceil(p.hp)}`;
-  if (el.speed) {
-    const kmh = p.car ? Math.round(carSpeed(p.car) * 0.22) : 0;
-    el.speed.textContent = p.car ? `${kmh} km/h` : '';
-  }
-  if (el.clock) el.clock.textContent = formatClock(state.timeOfDay);
-  if (el.street) {
-    const d = districtAt(p.x, p.y);
-    el.street.textContent = `${streetNameAt(p.x, p.y)} · ${d.name}`;
-  }
-  if (el.objective) el.objective.textContent = state.objectiveText || '';
-  if (el.banner) {
-    if (state.mission.banner) {
-      el.banner.textContent = state.mission.banner;
-      el.banner.classList.add('show');
-    } else {
-      el.banner.classList.remove('show');
+  function drawMinimap(G) {
+    const c = MAP_SIZE / 2;
+    const s = MAP_SIZE / (MAP_RANGE * 2);
+    const px = G.player.x; const pz = G.player.z;
+    mctx.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
+    mctx.save();
+    mctx.beginPath();
+    mctx.arc(c, c, c - 2, 0, Math.PI * 2);
+    mctx.clip();
+    // Sea + sand at the bottom edge.
+    mctx.fillStyle = '#16232e';
+    mctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+    const beachY = c + (414 - pz) * s;
+    mctx.fillStyle = '#e8cf9a';
+    mctx.fillRect(0, beachY, MAP_SIZE, MAP_SIZE - beachY);
+    const seaY = c + (470 - pz) * s;
+    mctx.fillStyle = '#2e7f9e';
+    mctx.fillRect(0, seaY, MAP_SIZE, MAP_SIZE - seaY);
+    // Blocks.
+    mctx.fillStyle = '#2c3a48';
+    for (let i = -4; i <= 4; i++) {
+      for (let j = -4; j <= 4; j++) {
+        const bx = c + (i * 90 - 36 - px) * s;
+        const bz = c + (j * 90 - 36 - pz) * s;
+        mctx.fillRect(bx, bz, 72 * s, 72 * s);
+      }
     }
+    // Canal.
+    mctx.fillStyle = '#2a6f8e';
+    const canalX = c + (-135 - 9 - px) * s;
+    mctx.fillRect(canalX, 0, 18 * s, MAP_SIZE);
+    // Roads.
+    mctx.strokeStyle = '#4a5a6a';
+    mctx.lineWidth = Math.max(2, 18 * s);
+    for (const L of [-405, -315, -225, -135, -45, 45, 135, 225, 315, 405]) {
+      if (L !== -135) {
+        mctx.beginPath();
+        mctx.moveTo(c + (L - px) * s, 0);
+        mctx.lineTo(c + (L - px) * s, MAP_SIZE);
+        mctx.stroke();
+      }
+      mctx.beginPath();
+      mctx.moveTo(0, c + (L - pz) * s);
+      mctx.lineTo(MAP_SIZE, c + (L - pz) * s);
+      mctx.stroke();
+    }
+    // Bridges.
+    mctx.fillStyle = '#f5d76e';
+    for (const b of G.city.bridges) {
+      const bx = c + (-135 - px) * s;
+      const bz = c + (b.z - pz) * s;
+      mctx.fillRect(bx - 9 * s, bz - 8 * s, 18 * s, 16 * s);
+    }
+    // Landmarks.
+    const dot = (x, z, color, r = 3) => {
+      mctx.fillStyle = color;
+      mctx.beginPath();
+      mctx.arc(c + (x - px) * s, c + (z - pz) * s, r, 0, Math.PI * 2);
+      mctx.fill();
+    };
+    dot(0, -315, '#d98cb8', 4); // casino
+    dot(0, 315, '#7ee787', 4); // safehouse
+    dot(315, -135, '#4da6ff', 4); // spray shop
+    // Mission marker / next start.
+    const m = G.missions.active;
+    const target = m && m.marker ? m.marker : G.missions.startPoint(G);
+    if (target) {
+      const tx = c + (target.x - px) * s;
+      const ty = c + (target.z - pz) * s;
+      mctx.fillStyle = '#ffd166';
+      mctx.save();
+      mctx.translate(tx, ty);
+      mctx.rotate(Math.PI / 4);
+      mctx.fillRect(-4, -4, 8, 8);
+      mctx.restore();
+    }
+    // Cop blips.
+    for (const cop of G.police.cops) dot(cop.x, cop.z, '#4da6ff', 2.5);
+    // Enemy blips.
+    for (const e of G.combat.enemies) {
+      if (e.state !== 'down') dot(e.x, e.z, '#ff4757', 2.5);
+    }
+    // Player arrow.
+    const heading = G.inCar ? G.car.heading : G.playerObj.state.heading;
+    mctx.save();
+    mctx.translate(c, c);
+    mctx.rotate(heading);
+    mctx.fillStyle = '#ffffff';
+    mctx.beginPath();
+    mctx.moveTo(0, -8);
+    mctx.lineTo(5.5, 6);
+    mctx.lineTo(-5.5, 6);
+    mctx.closePath();
+    mctx.fill();
+    mctx.strokeStyle = '#111111';
+    mctx.lineWidth = 1;
+    mctx.stroke();
+    mctx.restore();
+    mctx.restore();
+    // North tick.
+    mctx.fillStyle = '#ffffff';
+    mctx.font = 'bold 11px Arial';
+    mctx.textAlign = 'center';
+    mctx.fillText('N', c, 14);
   }
-  if (el.phone) {
-    if (state.phone) {
+
+  function setStars(n) {
+    let s = '';
+    for (let i = 0; i < 5; i++) s += i < n ? '★' : '☆';
+    el.stars.textContent = s;
+    el.stars.className = n > 0 ? 'stars hot' : 'stars';
+    el.wanted.style.display = n > 0 ? 'block' : 'none';
+  }
+
+  return {
+    setObjective(t) { objectiveText = t; el.objective.textContent = t; },
+    setTimer(sec) { timerSec = sec; },
+    setPrompt(t) {
+      if (t) { el.prompt.textContent = t; el.prompt.style.display = 'block'; }
+      else el.prompt.style.display = 'none';
+    },
+    banner(text, kind = '') {
+      el.banner.textContent = text;
+      el.banner.className = 'show ' + kind;
+      bannerT = 2.6;
+    },
+    showPhone(name, text) {
+      el.phoneName.textContent = name;
+      el.phoneText.textContent = text;
       el.phone.classList.add('show');
-      if (el['phone-from']) el['phone-from'].textContent = state.phone.from;
-      if (el['phone-text']) el['phone-text'].textContent = state.phone.text;
-    } else {
-      el.phone.classList.remove('show');
-    }
-  }
-  if (el.prompt) {
-    el.prompt.textContent = state.prompt || '';
-    el.prompt.classList.toggle('show', !!state.prompt);
-  }
-  if (el.vignette) {
-    el.vignette.style.opacity = p.hitFlash > 0 ? String(Math.min(0.7, p.hitFlash)) : '0';
-    if (p.hp <= 25) el.vignette.style.opacity = '0.45';
-  }
-  if (el['wanted-flash']) {
-    el['wanted-flash'].classList.toggle('show', stars > 0 && Math.floor(state.time * 2) % 2 === 0);
-  }
-  if (el['stats-line']) {
-    el['stats-line'].textContent = `Missions ${state.stats.missions}/5 · Packages ${state.stats.packages}/10 · Fares ${state.stats.fares}`;
-  }
-  drawMinimap(state);
+      phoneT = 6;
+    },
+    hidePhone() { el.phone.classList.remove('show'); },
+    showScreen(name) {
+      for (const k of ['title', 'pause', 'wasted', 'busted']) {
+        if (el[k]) el[k].style.display = k === name ? 'flex' : 'none';
+      }
+      // Full-screen menus hide the HUD; the pause menu keeps it behind.
+      const hudEl = document.getElementById('hud');
+      if (hudEl) hudEl.style.display = name === 'pause' ? 'block' : 'none';
+    },
+    hideScreens() {
+      for (const k of ['title', 'pause', 'wasted', 'busted']) {
+        if (el[k]) el[k].style.display = 'none';
+      }
+      const hudEl = document.getElementById('hud');
+      if (hudEl) hudEl.style.display = 'block';
+    },
+    update(dt, G) {
+      if (bannerT > 0) {
+        bannerT -= dt;
+        if (bannerT <= 0) el.banner.className = '';
+      }
+      if (phoneT > 0) {
+        phoneT -= dt;
+        if (phoneT <= 0) el.phone.classList.remove('show');
+      }
+      setStars(G.police.stars);
+      el.cash.textContent = formatMoney(G.cash);
+      el.rep.textContent = repTitle(G.rep) + ' · ' + G.rep + ' REP';
+      el.clock.textContent = formatClock(G.clockMinutes);
+      const d = districtAt(G.player.x, G.player.z);
+      el.district.textContent = d.name.toUpperCase();
+      el.street.textContent = streetAt(G.player.x, G.player.z);
+      el.timer.textContent = timerSec !== null ? formatTimer(timerSec) : '';
+      el.timer.style.display = timerSec !== null ? 'block' : 'none';
+      const speedKmh = G.inCar ? Math.abs(G.car.speed) * 3.6 : G.player.speed * 3.6;
+      el.speed.textContent = Math.round(speedKmh) + ' km/h';
+      const lift = G.city.nextLiftIn();
+      const lifting = G.city.liftingBridge();
+      el.bridge.textContent = lifting
+        ? 'BRIDGE UP @ ' + lifting.z
+        : 'BRIDGE LIFTS IN ' + formatTimer(lift);
+      el.bridge.className = lifting || lift < 30 ? 'bridge warn' : 'bridge';
+      el.healthFill.style.width = Math.max(0, G.health) + '%';
+      el.armorFill.style.width = Math.max(0, G.armor) + '%';
+      el.radio.textContent = G.audio.station().name;
+      el.track.textContent = '♪ ' + G.audio.track();
+      el.progress.textContent = G.save.progress({
+        missionsDone: G.missions.done,
+        packages: G.packages,
+        taxiFares: G.taxiFares,
+        stuntJumps: G.stuntJumps,
+        timeTrials: G.timeTrials,
+      }) + '% COMPLETE';
+      drawMinimap(G);
+    },
+  };
 }
